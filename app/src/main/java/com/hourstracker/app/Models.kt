@@ -3,7 +3,6 @@ package com.hourstracker.app
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 
@@ -12,8 +11,21 @@ private const val MINUTES_PER_DAY = 24 * 60
 data class Settings(
     val hourlyRate: Double = 0.0,
     val taxRate: Double = 0.0,
-    val currency: String = "£"
-)
+    val showTax: Boolean = true,
+    val currency: String = "£",
+    /** false = 24-hour clock (13:30), true = 12-hour clock with AM/PM (1:30 PM). */
+    val use12h: Boolean = false,
+    /** "en" or "uk". */
+    val language: String = "en",
+    /** 0 = follow system, 1 = light, 2 = dark. */
+    val themeMode: Int = 0,
+    val lightTheme: Int = 0,
+    val darkTheme: Int = 0
+) {
+    /** Tax is shown and subtracted only when it is switched on and greater than zero. */
+    val taxActive: Boolean
+        get() = showTax && taxRate > 0.0
+}
 
 /**
  * One day of work. Times are stored as minutes since midnight (0..1439),
@@ -85,35 +97,42 @@ fun buildWeek(weekStart: LocalDate, entries: Map<LocalDate, DayEntry>, settings:
 
 // ---------- formatting ----------
 
-fun two(n: Int): String = String.format(Locale.ROOT, "%02d", n)
+fun two(n: Int): String = if (n in 0..9) "0$n" else n.toString()
 
-/** 24-hour clock, e.g. 13:30 */
-fun formatClock(totalMinutes: Int): String = two(totalMinutes / 60) + ":" + two(totalMinutes % 60)
+/** A time of day: "13:30" (24-hour) or "1:30 PM" (12-hour). */
+fun formatClock(totalMinutes: Int, h12: Boolean): String {
+    val h = totalMinutes / 60
+    val m = totalMinutes % 60
+    if (!h12) return two(h) + ":" + two(m)
+    val suffix = if (h >= 12) "PM" else "AM"
+    val shown = if (h % 12 == 0) 12 else h % 12
+    return shown.toString() + ":" + two(m) + " " + suffix
+}
 
-/** e.g. 10h 25m */
-fun formatDuration(totalMinutes: Int): String = "${totalMinutes / 60}h ${totalMinutes % 60}m"
+/** A length of time as hh:mm, e.g. a 30 minute break is "00:30". */
+fun formatHm(totalMinutes: Int): String = two(totalMinutes / 60) + ":" + two(totalMinutes % 60)
 
-fun formatMoney(cents: Long, currency: String): String =
-    currency + String.format(Locale.getDefault(), "%.2f", cents / 100.0)
+/** e.g. "10h 25m" */
+fun formatDuration(totalMinutes: Int, s: Strings): String =
+    (totalMinutes / 60).toString() + s.hourUnit + " " + (totalMinutes % 60).toString() + s.minUnit
 
-fun formatNumber(value: Double): String =
+fun formatMoney(cents: Long, currency: String, s: Strings): String =
+    currency + String.format(s.locale, "%.2f", cents / 100.0)
+
+fun formatNumber(value: Double, s: Strings): String =
     if (value == Math.floor(value)) {
         value.toLong().toString()
     } else {
-        String.format(Locale.getDefault(), "%.2f", value).trimEnd('0').trimEnd(',', '.')
+        String.format(s.locale, "%.2f", value).trimEnd('0').trimEnd(',', '.')
     }
 
 fun parseDecimal(text: String): Double? =
     text.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it >= 0.0 }
 
-fun shortDay(date: LocalDate): String =
-    date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)
-
-fun weekRangeLabel(weekStart: LocalDate): String {
+fun weekRangeLabel(weekStart: LocalDate, s: Strings): String {
     val end = weekStart.plusDays(6)
-    val locale = Locale.getDefault()
-    val noYear = DateTimeFormatter.ofPattern("MMM d", locale)
-    val withYear = DateTimeFormatter.ofPattern("MMM d, yyyy", locale)
+    val noYear = DateTimeFormatter.ofPattern(s.patternNoYear, s.locale)
+    val withYear = DateTimeFormatter.ofPattern(s.patternWithYear, s.locale)
     return if (weekStart.year == end.year) {
         weekStart.format(noYear) + " - " + end.format(withYear)
     } else {
@@ -121,44 +140,45 @@ fun weekRangeLabel(weekStart: LocalDate): String {
     }
 }
 
-fun fullDateLabel(date: LocalDate): String =
-    date.format(DateTimeFormatter.ofPattern("EEEE, MMM d, yyyy", Locale.getDefault()))
+fun fullDateLabel(date: LocalDate, s: Strings): String =
+    date.format(DateTimeFormatter.ofPattern(s.patternFull, s.locale))
 
-fun buildReportText(weekStart: LocalDate, week: WeekSummary, settings: Settings): String {
+fun buildReportText(weekStart: LocalDate, week: WeekSummary, settings: Settings, s: Strings): String {
     val sb = StringBuilder()
-    sb.appendLine("Hours Report")
-    sb.appendLine(weekRangeLabel(weekStart))
+    sb.appendLine(s.appTitle)
+    sb.appendLine(weekRangeLabel(weekStart, s))
     sb.appendLine()
     week.days.forEachIndexed { i, day ->
+        val name = s.dayShort(day.date.dayOfWeek)
         if (!day.hasTimes) {
-            sb.appendLine(shortDay(day.date) + "  --")
+            sb.appendLine("$name  --")
         } else {
-            val start = formatClock(day.startMin ?: 0)
-            val end = formatClock(day.endMin ?: 0)
+            val start = formatClock(day.startMin ?: 0, settings.use12h)
+            val end = formatClock(day.endMin ?: 0, settings.use12h)
             sb.appendLine(
-                shortDay(day.date) + "  " + start + " - " + end + "  " +
-                    formatDuration(week.dayMinutes[i]).padStart(8) + "  " +
-                    formatMoney(week.dayCents[i], settings.currency)
+                name + "  " + start + " - " + end + "  " +
+                    formatDuration(week.dayMinutes[i], s) + "  " +
+                    formatMoney(week.dayCents[i], settings.currency, s)
             )
             if (day.breakMin > 0) {
-                val note = if (day.subtractBreak) "" else " (not subtracted)"
-                sb.appendLine("     break " + formatClock(day.breakMin) + note)
+                val extra = if (day.subtractBreak) "" else " (not subtracted)"
+                sb.appendLine("     " + s.colBreak.lowercase(s.locale) + " " + formatHm(day.breakMin) + extra)
             }
         }
     }
     sb.appendLine()
-    sb.appendLine("Total hours: " + formatDuration(week.totalMinutes))
-    sb.appendLine("Total pay: " + formatMoney(week.grossCents, settings.currency))
-    if (settings.taxRate > 0.0) {
-        sb.appendLine("Tax (" + formatNumber(settings.taxRate) + "%): -" + formatMoney(week.taxCents, settings.currency))
-        sb.appendLine("Net pay: " + formatMoney(week.netCents, settings.currency))
+    sb.appendLine(s.totalHours + ": " + formatDuration(week.totalMinutes, s))
+    sb.appendLine(s.totalPay + ": " + formatMoney(week.grossCents, settings.currency, s))
+    if (settings.taxActive) {
+        sb.appendLine(s.tax + " (" + formatNumber(settings.taxRate, s) + "%): -" + formatMoney(week.taxCents, settings.currency, s))
+        sb.appendLine(s.netPay + ": " + formatMoney(week.netCents, settings.currency, s))
     }
-    sb.appendLine("Days worked: " + week.daysWorked)
+    sb.appendLine(s.daysWorked + ": " + week.daysWorked)
     val notes = week.days.filter { it.note.isNotBlank() }
     if (notes.isNotEmpty()) {
         sb.appendLine()
-        sb.appendLine("Notes:")
-        notes.forEach { sb.appendLine(shortDay(it.date) + ": " + it.note.trim()) }
+        sb.appendLine(s.notes + ":")
+        notes.forEach { sb.appendLine(s.dayShort(it.date.dayOfWeek) + ": " + it.note.trim()) }
     }
     return sb.toString().trimEnd()
 }

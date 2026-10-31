@@ -1,6 +1,5 @@
 package com.hourstracker.app
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,48 +26,51 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun PreviewScreen(vm: TrackerViewModel) {
+    val s = LocalStrings.current
+    val palette = LocalPalette.current
+    val scheme = MaterialTheme.colorScheme
     val settings = vm.settings
     val week = buildWeek(vm.weekStart, vm.entries, settings)
-    val green = AppColors.payGreen
-    val muted = AppColors.muted
-    val line = MaterialTheme.colorScheme.onSurface
+    val line = scheme.outline
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            colors = CardDefaults.cardColors(
+                containerColor = scheme.surface,
+                contentColor = scheme.onSurface
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
-            Column(Modifier.padding(20.dp)) {
+            Column(Modifier.padding(16.dp)) {
                 Text(
-                    weekRangeLabel(vm.weekStart),
+                    text = weekRangeLabel(vm.weekStart, s),
                     modifier = Modifier.fillMaxWidth(),
                     textAlign = TextAlign.Center,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(12.dp))
                 HorizontalDivider(color = line)
-                PreviewRow("Day", "Start", "End", "Hours", "Pay", true, line)
+                PreviewRow(s.colDay, s.colStart, s.colEnd, s.colHours, s.colPay, true, scheme.onSurface)
                 HorizontalDivider(color = line)
                 Spacer(Modifier.height(4.dp))
 
                 week.days.forEachIndexed { i, day ->
                     val has = day.hasTimes
                     PreviewRow(
-                        day = shortDay(day.date),
-                        start = day.startMin?.let { formatClock(it) } ?: "--",
-                        end = day.endMin?.let { formatClock(it) } ?: "--",
-                        hours = if (has) formatDuration(week.dayMinutes[i]) else "--",
-                        pay = if (has) formatMoney(week.dayCents[i], settings.currency) else "--",
+                        day = s.dayShort(day.date.dayOfWeek),
+                        start = day.startMin?.let { formatClock(it, settings.use12h) } ?: "--",
+                        end = day.endMin?.let { formatClock(it, settings.use12h) } ?: "--",
+                        hours = if (has) formatDuration(week.dayMinutes[i], s) else "--",
+                        pay = if (has) formatMoney(week.dayCents[i], settings.currency, s) else "--",
                         bold = false,
-                        payColor = if (has) green else muted
+                        payColor = if (has) palette.payGreen else scheme.onSurfaceVariant
                     )
                 }
 
@@ -76,30 +78,30 @@ fun PreviewScreen(vm: TrackerViewModel) {
                 HorizontalDivider(color = line)
                 Spacer(Modifier.height(12.dp))
 
-                SummaryRow("TOTAL HOURS:", formatDuration(week.totalMinutes), line, true)
-                SummaryRow("TOTAL PAY:", formatMoney(week.grossCents, settings.currency), green, true)
-                if (settings.taxRate > 0.0) {
+                SummaryRow(s.totalHours.uppercase(s.locale) + ":", formatDuration(week.totalMinutes, s), scheme.onSurface, true)
+                SummaryRow(s.totalPay.uppercase(s.locale) + ":", formatMoney(week.grossCents, settings.currency, s), palette.payGreen, true)
+                if (settings.taxActive) {
                     SummaryRow(
-                        "Tax (" + formatNumber(settings.taxRate) + "%):",
-                        "-" + formatMoney(week.taxCents, settings.currency),
-                        Color(0xFFD9534F),
+                        s.tax + " (" + formatNumber(settings.taxRate, s) + "%):",
+                        "-" + formatMoney(week.taxCents, settings.currency, s),
+                        scheme.error,
                         false
                     )
-                    SummaryRow("Net pay:", formatMoney(week.netCents, settings.currency), green, true)
+                    SummaryRow(s.netPay + ":", formatMoney(week.netCents, settings.currency, s), palette.payGreen, true)
                 }
-                SummaryRow("Days Worked:", week.daysWorked.toString(), line, false)
+                SummaryRow(s.daysWorked + ":", week.daysWorked.toString(), scheme.onSurface, false)
 
                 val notes = week.days.filter { it.note.isNotBlank() }
                 if (notes.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
                     HorizontalDivider(color = line)
                     Spacer(Modifier.height(12.dp))
-                    Text("NOTES", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    Text(s.notes.uppercase(s.locale), fontWeight = FontWeight.Bold, fontSize = 17.sp)
                     Spacer(Modifier.height(8.dp))
                     notes.forEach { day ->
                         Row(Modifier.padding(vertical = 4.dp)) {
                             Text(
-                                shortDay(day.date),
+                                text = s.dayShort(day.date.dayOfWeek),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
                                 modifier = Modifier.padding(end = 20.dp)
@@ -131,17 +133,19 @@ private fun PreviewRow(
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(day, Modifier.weight(0.13f), fontWeight = weight, fontSize = 15.sp)
-        Text(start, Modifier.weight(0.2f), fontWeight = weight, fontSize = 13.sp, textAlign = TextAlign.Center)
-        Text(end, Modifier.weight(0.2f), fontWeight = weight, fontSize = 13.sp, textAlign = TextAlign.Center)
-        Text(hours, Modifier.weight(0.22f), fontWeight = weight, fontSize = 14.sp, textAlign = TextAlign.End)
+        Text(day, Modifier.weight(0.12f), fontWeight = weight, fontSize = 14.sp, maxLines = 1)
+        Text(start, Modifier.weight(0.215f), fontWeight = weight, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false)
+        Text(end, Modifier.weight(0.215f), fontWeight = weight, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false)
+        Text(hours, Modifier.weight(0.21f), fontWeight = weight, fontSize = 13.sp, textAlign = TextAlign.End, maxLines = 1, softWrap = false)
         Text(
-            pay,
-            Modifier.weight(0.25f),
+            text = pay,
+            modifier = Modifier.weight(0.24f),
             color = if (bold) Color.Unspecified else payColor,
             fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            textAlign = TextAlign.End
+            fontSize = 13.sp,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }
@@ -155,15 +159,15 @@ private fun SummaryRow(label: String, value: String, valueColor: Color, bold: Bo
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            label,
+            text = label,
             fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
-            fontSize = if (bold) 18.sp else 16.sp
+            fontSize = if (bold) 17.sp else 15.sp
         )
         Text(
-            value,
+            text = value,
             color = valueColor,
             fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
-            fontSize = if (bold) 18.sp else 16.sp
+            fontSize = if (bold) 17.sp else 15.sp
         )
     }
 }

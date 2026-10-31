@@ -17,12 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,8 +29,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,107 +44,140 @@ private sealed interface FormDialog {
 
 @Composable
 fun FormScreen(vm: TrackerViewModel, onOpenDay: (LocalDate) -> Unit) {
+    val s = LocalStrings.current
+    val palette = LocalPalette.current
+    val scheme = MaterialTheme.colorScheme
     val settings = vm.settings
     val week = buildWeek(vm.weekStart, vm.entries, settings)
     var dialog by remember { mutableStateOf<FormDialog?>(null) }
-    val green = AppColors.payGreen
-    val muted = AppColors.muted
-    val primary = MaterialTheme.colorScheme.primary
+    val timeMode = if (settings.use12h) TimeMode.Clock12 else TimeMode.Clock24
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
             .verticalScroll(rememberScrollState())
     ) {
-        WeekNavigator(vm)
-
-        // table header
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-            HeaderCell("Day", 0.15f)
-            HeaderCell("Start", 0.2f)
-            HeaderCell("End", 0.2f)
-            HeaderCell("Time", 0.225f)
-            HeaderCell("Pay", 0.225f)
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-        week.days.forEachIndexed { i, day ->
-            val minutes = week.dayMinutes[i]
-            val cents = week.dayCents[i]
-            Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
-                Cell(0.15f, onClick = { onOpenDay(day.date) }) {
-                    Text(shortDay(day.date), color = primary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                }
-                Cell(0.2f, onClick = { dialog = FormDialog.Time(day.date, true) }) {
-                    TimeOrSet(day.startMin)
-                }
-                Cell(0.2f, onClick = { dialog = FormDialog.Time(day.date, false) }) {
-                    TimeOrSet(day.endMin)
-                }
-                Cell(0.225f) {
-                    Text(
-                        formatDuration(minutes),
-                        color = if (minutes > 0) primary else muted,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        maxLines = 1
-                    )
-                }
-                Cell(0.225f) {
-                    Text(
-                        formatMoney(cents, settings.currency),
-                        color = if (cents > 0) green else muted,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Clip
-                    )
-                }
+        // The table: header and seven days.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(scheme.surface)
+        ) {
+            HorizontalDivider(color = scheme.outlineVariant)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HeaderCell(s.colDay, 0.14f)
+                HeaderCell(s.colStart, 0.215f)
+                HeaderCell(s.colEnd, 0.215f)
+                HeaderCell(s.colTime, 0.215f)
+                HeaderCell(s.colPay, 0.215f)
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        }
+            HorizontalDivider(color = scheme.outlineVariant)
 
-        Spacer(Modifier.height(16.dp))
-
-        SettingCard("Hourly Rate:") {
-            Pill(
-                text = if (settings.hourlyRate > 0.0) {
-                    settings.currency + formatNumber(settings.hourlyRate) + "/hr"
-                } else {
-                    "Set"
-                },
-                onClick = { dialog = FormDialog.Rate }
-            )
-        }
-        SettingCard("Tax Rate:") {
-            Pill(
-                text = if (settings.taxRate > 0.0) formatNumber(settings.taxRate) + "%" else "Set",
-                onClick = { dialog = FormDialog.Tax }
-            )
+            week.days.forEachIndexed { i, day ->
+                val minutes = week.dayMinutes[i]
+                val cents = week.dayCents[i]
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Cell(0.14f, onClick = { onOpenDay(day.date) }) {
+                        Text(
+                            text = s.dayShort(day.date.dayOfWeek),
+                            color = scheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                    Cell(0.215f, onClick = { dialog = FormDialog.Time(day.date, true) }) {
+                        TimeOrSet(day.startMin, settings.use12h)
+                    }
+                    Cell(0.215f, onClick = { dialog = FormDialog.Time(day.date, false) }) {
+                        TimeOrSet(day.endMin, settings.use12h)
+                    }
+                    Cell(0.215f) {
+                        Text(
+                            text = formatDuration(minutes, s),
+                            color = if (minutes > 0) scheme.primary else scheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip
+                        )
+                    }
+                    Cell(0.215f) {
+                        Text(
+                            text = formatMoney(cents, settings.currency, s),
+                            color = if (cents > 0) palette.payGreen else scheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip
+                        )
+                    }
+                }
+                HorizontalDivider(color = scheme.outlineVariant)
+            }
         }
 
         Spacer(Modifier.height(12.dp))
 
+        // Hourly rate and tax rate: two compact cards side by side.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            MiniCard(
+                label = s.hourlyRate,
+                value = if (settings.hourlyRate > 0.0) {
+                    settings.currency + formatNumber(settings.hourlyRate, s) + s.perHour
+                } else {
+                    s.set
+                },
+                onClick = { dialog = FormDialog.Rate },
+                modifier = Modifier.weight(1f)
+            )
+            if (settings.showTax) {
+                MiniCard(
+                    label = s.taxRate,
+                    value = if (settings.taxRate > 0.0) formatNumber(settings.taxRate, s) + "%" else s.set,
+                    onClick = { dialog = FormDialog.Tax },
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // Totals for the week.
         Column(
             modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .padding(horizontal = 16.dp)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(TotalsBackground)
+                .clip(RoundedCornerShape(12.dp))
+                .background(palette.totalsBg)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            TotalRow("Total Hours:", formatDuration(week.totalMinutes), TotalsBlue)
-            TotalRow("Total Pay:", formatMoney(week.grossCents, settings.currency), TotalsGreen)
-            if (settings.taxRate > 0.0) {
+            TotalRow(s.totalHours + ":", formatDuration(week.totalMinutes, s), palette.totalsBlue)
+            TotalRow(s.totalPay + ":", formatMoney(week.grossCents, settings.currency, s), palette.totalsGreen)
+            if (settings.taxActive) {
                 TotalRow(
-                    "Tax (" + formatNumber(settings.taxRate) + "%):",
-                    "-" + formatMoney(week.taxCents, settings.currency),
-                    Color(0xFFFFB4A9)
+                    s.tax + " (" + formatNumber(settings.taxRate, s) + "%):",
+                    "-" + formatMoney(week.taxCents, settings.currency, s),
+                    palette.negative
                 )
-                TotalRow("Net Pay:", formatMoney(week.netCents, settings.currency), TotalsGreen)
+                TotalRow(s.netPay + ":", formatMoney(week.netCents, settings.currency, s), palette.totalsGreen)
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -159,9 +187,10 @@ fun FormScreen(vm: TrackerViewModel, onOpenDay: (LocalDate) -> Unit) {
         is FormDialog.Time -> {
             val entry = vm.entryFor(d.date)
             TimeDialog(
-                title = if (d.isStart) "Set Start Time" else "Set End Time",
+                title = if (d.isStart) s.setStartTime else s.setEndTime,
+                mode = timeMode,
                 initialMinutes = if (d.isStart) entry.startMin else entry.endMin,
-                hint = "Example: 09:30 or 17:45",
+                hint = if (settings.use12h) s.hint12 else s.hint24,
                 onSave = { minutes ->
                     vm.update(d.date) { e ->
                         if (d.isStart) e.copy(startMin = minutes) else e.copy(endMin = minutes)
@@ -184,37 +213,9 @@ fun FormScreen(vm: TrackerViewModel, onOpenDay: (LocalDate) -> Unit) {
 }
 
 @Composable
-private fun WeekNavigator(vm: TrackerViewModel) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 12.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = { vm.shiftWeek(-1) }) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous week")
-        }
-        Text(
-            text = weekRangeLabel(vm.weekStart),
-            modifier = Modifier
-                .weight(1f)
-                .clickable { vm.goToCurrentWeek() },
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp
-        )
-        IconButton(onClick = { vm.shiftWeek(1) }) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next week")
-        }
-    }
-}
-
-@Composable
 private fun RowScope.HeaderCell(text: String, weight: Float) {
     Cell(weight) {
-        Text(text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+        Text(text, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
     }
 }
 
@@ -224,49 +225,41 @@ private fun RowScope.Cell(
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val base = Modifier.weight(weight).fillMaxHeight()
+    val base = Modifier
+        .weight(weight)
+        .fillMaxHeight()
     Box(
-        modifier = if (onClick != null) base.clickable(onClick = onClick) else base,
+        modifier = if (onClick != null) base.clickable(role = Role.Button, onClick = onClick) else base,
         contentAlignment = Alignment.Center,
         content = content
     )
 }
 
 @Composable
-private fun TimeOrSet(minutes: Int?) {
+private fun TimeOrSet(minutes: Int?, h12: Boolean) {
     if (minutes != null) {
-        Text(formatClock(minutes), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(
+            text = formatClock(minutes, h12),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false
+        )
     } else {
         Text(
-            "Set",
+            text = LocalStrings.current.set,
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.SemiBold,
-            fontSize = 15.sp
+            fontSize = 14.sp,
+            maxLines = 1
         )
-    }
-}
-
-@Composable
-private fun SettingCard(label: String, content: @Composable () -> Unit) {
-    Row(
-        modifier = Modifier
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-        content()
     }
 }
 
 @Composable
 private fun TotalRow(label: String, value: String, valueColor: Color) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        Text(value, color = valueColor, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+        Text(value, color = valueColor, fontWeight = FontWeight.Bold, fontSize = 17.sp)
     }
 }

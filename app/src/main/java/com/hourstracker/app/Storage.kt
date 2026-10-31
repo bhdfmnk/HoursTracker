@@ -11,14 +11,26 @@ class Storage(context: Context) {
     fun loadSettings(): Settings = Settings(
         hourlyRate = prefs.getString("rate", null)?.toDoubleOrNull() ?: 0.0,
         taxRate = prefs.getString("tax", null)?.toDoubleOrNull() ?: 0.0,
-        currency = prefs.getString("currency", null) ?: "£"
+        showTax = prefs.getBoolean("show_tax", true),
+        currency = prefs.getString("currency", null) ?: "£",
+        use12h = prefs.getBoolean("use12h", false),
+        language = prefs.getString("lang", null) ?: "en",
+        themeMode = prefs.getInt("theme_mode", 0),
+        lightTheme = prefs.getInt("theme_light", 0),
+        darkTheme = prefs.getInt("theme_dark", 0)
     )
 
     fun saveSettings(settings: Settings) {
         prefs.edit()
             .putString("rate", settings.hourlyRate.toString())
             .putString("tax", settings.taxRate.toString())
+            .putBoolean("show_tax", settings.showTax)
             .putString("currency", settings.currency)
+            .putBoolean("use12h", settings.use12h)
+            .putString("lang", settings.language)
+            .putInt("theme_mode", settings.themeMode)
+            .putInt("theme_light", settings.lightTheme)
+            .putInt("theme_dark", settings.darkTheme)
             .apply()
     }
 

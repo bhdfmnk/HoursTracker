@@ -36,18 +36,8 @@ class TrackerViewModel(app: Application) : AndroidViewModel(app) {
         storage.saveEntries(entries)
     }
 
-    fun setHourlyRate(value: Double) {
-        settings = settings.copy(hourlyRate = value)
-        storage.saveSettings(settings)
-    }
-
-    fun setTaxRate(value: Double) {
-        settings = settings.copy(taxRate = value)
-        storage.saveSettings(settings)
-    }
-
-    fun setCurrency(value: String) {
-        settings = settings.copy(currency = value)
+    fun updateSettings(change: (Settings) -> Settings) {
+        settings = change(settings)
         storage.saveSettings(settings)
     }
 }

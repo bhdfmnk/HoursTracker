@@ -1,6 +1,5 @@
 package com.hourstracker.app
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,12 +10,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,109 +38,107 @@ private enum class DayDialog { Start, End, Break }
 
 @Composable
 fun DayDetailScreen(vm: TrackerViewModel, date: LocalDate, onBack: () -> Unit) {
-    val entry = vm.entryFor(date)
+    val s = LocalStrings.current
+    val palette = LocalPalette.current
+    val scheme = MaterialTheme.colorScheme
     val settings = vm.settings
+    val entry = vm.entryFor(date)
     val minutes = entry.workedMinutes
     val cents = payCents(minutes, settings.hourlyRate)
     var dialog by remember { mutableStateOf<DayDialog?>(null) }
+    val timeMode = if (settings.use12h) TimeMode.Clock12 else TimeMode.Clock24
+    val timeHint = if (settings.use12h) s.hint12 else s.hint24
+    val empty = "--:--"
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
     ) {
-        // header: back + day name + full date
+        // back arrow, short day name and the full date
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = s.back,
+                    tint = scheme.primary
+                )
             }
-            Column(Modifier.padding(start = 4.dp)) {
-                Text(shortDay(date), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+            Column(modifier = Modifier.padding(start = 4.dp)) {
                 Text(
-                    fullDateLabel(date),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 15.sp
+                    text = s.dayShort(date.dayOfWeek),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+                Text(
+                    text = fullDateLabel(date, s),
+                    color = scheme.onSurfaceVariant,
+                    fontSize = 14.sp
                 )
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Work Hours", fontWeight = FontWeight.Bold, fontSize = 17.sp)
-            Text(
-                "Reset",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier
-                    .clickable {
-                        vm.update(date) { e ->
-                            e.copy(startMin = null, endMin = null, breakMin = 0, subtractBreak = true)
+        SectionHeader(
+            text = s.workHours,
+            trailing = {
+                Text(
+                    text = s.reset,
+                    color = scheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 15.sp,
+                    modifier = Modifier
+                        .clickable(role = Role.Button) {
+                            vm.update(date) { e ->
+                                e.copy(startMin = null, endMin = null, breakMin = 0, subtractBreak = true)
+                            }
                         }
-                    }
-                    .padding(8.dp)
-            )
-        }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+            }
+        )
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        GroupCard {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Start", fontSize = 17.sp)
-                    Spacer(Modifier.height(8.dp))
+                    Text(s.colStart, fontSize = 15.sp, color = scheme.onSurfaceVariant)
+                    Spacer(Modifier.height(6.dp))
                     Pill(
-                        text = entry.startMin?.let { formatClock(it) } ?: "--:--",
+                        text = entry.startMin?.let { formatClock(it, settings.use12h) } ?: empty,
                         onClick = { dialog = DayDialog.Start },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        large = true
                     )
                 }
                 Column(Modifier.weight(1f)) {
-                    Text("End", fontSize = 17.sp)
-                    Spacer(Modifier.height(8.dp))
+                    Text(s.colEnd, fontSize = 15.sp, color = scheme.onSurfaceVariant)
+                    Spacer(Modifier.height(6.dp))
                     Pill(
-                        text = entry.endMin?.let { formatClock(it) } ?: "--:--",
+                        text = entry.endMin?.let { formatClock(it, settings.use12h) } ?: empty,
                         onClick = { dialog = DayDialog.End },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        large = true
                     )
                 }
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Break Time", fontSize = 17.sp)
-                Button(onClick = { dialog = DayDialog.Break }, shape = CircleShape) {
-                    Text(
-                        if (entry.breakMin > 0) formatClock(entry.breakMin) else "Set",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 16.sp
-                    )
-                }
+            RowDivider()
+            SettingRow(s.breakTime) {
+                Pill(
+                    text = if (entry.breakMin > 0) formatHm(entry.breakMin) else s.set,
+                    onClick = { dialog = DayDialog.Break }
+                )
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Subtract break from hours", fontSize = 17.sp, modifier = Modifier.weight(1f))
+            RowDivider()
+            SettingRow(s.subtractBreak) {
                 Switch(
                     checked = entry.subtractBreak,
                     onCheckedChange = { checked ->
@@ -149,46 +146,35 @@ fun DayDetailScreen(vm: TrackerViewModel, date: LocalDate, onBack: () -> Unit) {
                     }
                 )
             }
-
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Hours Worked", fontSize = 17.sp)
+            RowDivider()
+            SettingRow(s.hoursWorked) {
                 Text(
-                    formatDuration(minutes),
-                    color = AppColors.payGreen,
+                    text = formatDuration(minutes, s),
+                    color = palette.payGreen,
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp
                 )
             }
-
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Earned", fontSize = 17.sp)
+            RowDivider()
+            SettingRow(s.earned) {
                 Text(
-                    formatMoney(cents, settings.currency),
-                    color = AppColors.payGreen,
+                    text = formatMoney(cents, settings.currency, s),
+                    color = palette.payGreen,
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp
                 )
             }
         }
 
-        Text(
-            "Notes",
-            fontWeight = FontWeight.Bold,
-            fontSize = 17.sp,
-            modifier = Modifier.padding(start = 20.dp, top = 24.dp, bottom = 8.dp)
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(12.dp)
-        ) {
+        SectionHeader(text = s.notes)
+        GroupCard {
             OutlinedTextField(
                 value = entry.note,
                 onValueChange = { text -> vm.update(date) { e -> e.copy(note = text) } },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 180.dp)
+                    .heightIn(min = 160.dp)
+                    .padding(12.dp)
             )
         }
         Spacer(Modifier.height(24.dp))
@@ -196,9 +182,10 @@ fun DayDetailScreen(vm: TrackerViewModel, date: LocalDate, onBack: () -> Unit) {
 
     when (dialog) {
         DayDialog.Start -> TimeDialog(
-            title = "Set Start Time",
+            title = s.setStartTime,
+            mode = timeMode,
             initialMinutes = entry.startMin,
-            hint = "Example: 09:30 or 17:45",
+            hint = timeHint,
             onSave = { m ->
                 vm.update(date) { e -> e.copy(startMin = m) }
                 dialog = null
@@ -210,9 +197,10 @@ fun DayDetailScreen(vm: TrackerViewModel, date: LocalDate, onBack: () -> Unit) {
             onDismiss = { dialog = null }
         )
         DayDialog.End -> TimeDialog(
-            title = "Set End Time",
+            title = s.setEndTime,
+            mode = timeMode,
             initialMinutes = entry.endMin,
-            hint = "Example: 09:30 or 17:45",
+            hint = timeHint,
             onSave = { m ->
                 vm.update(date) { e -> e.copy(endMin = m) }
                 dialog = null
@@ -224,9 +212,10 @@ fun DayDetailScreen(vm: TrackerViewModel, date: LocalDate, onBack: () -> Unit) {
             onDismiss = { dialog = null }
         )
         DayDialog.Break -> TimeDialog(
-            title = "Break Time",
+            title = s.breakTime,
+            mode = TimeMode.Duration,
             initialMinutes = entry.breakMin.takeIf { it > 0 },
-            hint = "Break length, hh:mm. Example: 00:30",
+            hint = s.hintBreak,
             onSave = { m ->
                 vm.update(date) { e -> e.copy(breakMin = m) }
                 dialog = null
