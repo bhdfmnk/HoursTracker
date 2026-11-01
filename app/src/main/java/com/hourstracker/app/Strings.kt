@@ -87,6 +87,36 @@ class Strings(val uk: Boolean) {
     val filePdf = "PDF"
     val fileCsv = "CSV"
 
+    // --- weekend rate / per-day multiplier
+    val weekendRate = p("Weekend rate", "Ставка на вихідних")
+    val weekendSubtitle = p("Saturday and Sunday", "Субота й неділя")
+    val multiplierLabel = p("Multiplier (1 = same rate)", "Коефіцієнт (1 = та сама ставка)")
+    val rateMultiplier = p("Rate multiplier", "Коефіцієнт ставки")
+    val dayMultiplierLabel = p("Multiplier for this day", "Коефіцієнт для цього дня")
+    val multStandard = p("Standard rate", "Звичайна ставка")
+    val multWeekend = p("Weekend default", "За замовчуванням для вихідних")
+    val multCustom = p("Set for this day only", "Задано лише для цього дня")
+    val rateX = p("Rate ×", "Ставка ×")
+
+    // --- start / end shift button
+    val today = p("Today", "Сьогодні")
+    val yesterday = p("yesterday", "учора")
+    val punchStart = p("Start shift", "Почати зміну")
+    val punchEnd = p("End shift", "Завершити зміну")
+    val punchDone = p("Recorded", "Записано")
+    val punchNotStarted = p("Not started", "Не розпочато")
+    val punchStartedAt = p("Started", "Початок")
+    val punchHint = p(
+        "Tap: now. Double-tap or hold: enter manually.",
+        "Дотик: зараз. Подвійний дотик або утримання: ввести вручну."
+    )
+    val punchStarted = p("Shift started at", "Зміну розпочато о")
+    val punchEnded = p("Shift ended at", "Зміну завершено о")
+    val punchAlready = p(
+        "Today's shift is already recorded. Double-tap or hold the button to edit the end time.",
+        "Зміну за сьогодні вже записано. Подвійний дотик або утримання відкриє редагування часу закінчення."
+    )
+
     // --- settings
     val secPay = p("Pay", "Оплата")
     val secTime = p("Time", "Час")
@@ -115,9 +145,13 @@ class Strings(val uk: Boolean) {
     val taxLabel = p("Tax, % of pay", "Податок, % від оплати")
     val settingsNote = p(
         "The hourly rate is saved on this device and applied to every day of every week. " +
+            "On Saturdays and Sundays it is multiplied by the weekend rate (1.5 by default); " +
+            "a single day can have its own multiplier. " +
             "Weeks run from Monday to Sunday. If a shift ends earlier than it starts, " +
             "it is counted as ending after midnight.",
         "Погодинна ставка зберігається на пристрої й застосовується до кожного дня кожного тижня. " +
+            "У суботу й неділю вона множиться на коефіцієнт вихідних (за замовчуванням 1,5); " +
+            "для окремого дня можна задати свій коефіцієнт. " +
             "Тиждень іде з понеділка по неділю. Якщо зміна закінчується раніше, ніж починається, " +
             "вона рахується через північ."
     )

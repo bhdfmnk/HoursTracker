@@ -46,6 +46,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -126,9 +128,14 @@ fun RowDivider() {
     )
 }
 
-/** A label on the left and a control (pill, switch...) on the right. */
+/** A label (with an optional small line under it) on the left and a control on the right. */
 @Composable
-fun SettingRow(label: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun SettingRow(
+    label: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    content: @Composable () -> Unit
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -137,36 +144,68 @@ fun SettingRow(label: String, modifier: Modifier = Modifier, content: @Composabl
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = label,
-            fontSize = 17.sp,
+        Column(
             modifier = Modifier
                 .weight(1f)
                 .padding(end = 12.dp)
-        )
+        ) {
+            Text(text = label, fontSize = 17.sp)
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         content()
     }
 }
 
-/** Compact tappable card: a small caption and a value (hourly rate, tax rate). */
+/**
+ * Compact tappable card with a caption and a value (hourly rate, tax rate).
+ * When it is the only card in its row (wide = true) the caption and value sit on one line.
+ */
 @Composable
-fun MiniCard(label: String, value: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun MiniCard(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    wide: Boolean = false
+) {
     val scheme = MaterialTheme.colorScheme
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(scheme.surface)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-    ) {
-        Text(text = label, color = scheme.onSurfaceVariant, fontSize = 13.sp, maxLines = 1)
-        Text(
-            text = value,
-            color = scheme.primary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            maxLines = 1
-        )
+    val cardModifier = modifier
+        .clip(RoundedCornerShape(12.dp))
+        .background(scheme.surface)
+        .clickable(role = Role.Button, onClick = onClick)
+        .padding(horizontal = 14.dp, vertical = 10.dp)
+    if (wide) {
+        Row(
+            modifier = cardModifier.heightIn(min = 44.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = label, color = scheme.onSurfaceVariant, fontSize = 15.sp, maxLines = 1)
+            Text(
+                text = value,
+                color = scheme.primary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                maxLines = 1
+            )
+        }
+    } else {
+        Column(modifier = cardModifier) {
+            Text(text = label, color = scheme.onSurfaceVariant, fontSize = 13.sp, maxLines = 1)
+            Text(
+                text = value,
+                color = scheme.primary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                maxLines = 1
+            )
+        }
     }
 }
 
@@ -509,79 +548,84 @@ fun TaxDialog(vm: TrackerViewModel, onDismiss: () -> Unit) {
     )
 }
 
-/** Ten common currencies plus a field for a custom symbol. */
+/** One equal-sized tile of the currency grid. It shows only the symbol. */
+@Composable
+private fun CurrencyTile(
+    symbol: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        modifier = modifier
+            .height(52.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) scheme.primary else scheme.surfaceVariant)
+            .clickable(role = Role.RadioButton, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = symbol,
+            color = if (selected) scheme.onPrimary else scheme.onSurface,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false
+        )
+    }
+}
+
+/** Ten common currencies as a grid of symbols, plus a "+" tile for a custom symbol. */
 @Composable
 fun CurrencyDialog(current: String, onSelect: (String) -> Unit, onDismiss: () -> Unit) {
     val s = LocalStrings.current
-    val scheme = MaterialTheme.colorScheme
     val isPreset = s.currencies.any { it.symbol == current }
     var customMode by remember { mutableStateOf(!isPreset) }
     var custom by remember { mutableStateOf(if (isPreset) "" else current) }
+    val columns = 4
+    val tiles: List<CurrencyOption?> = s.currencies + listOf<CurrencyOption?>(null)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(s.currencyTitle) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                s.currencies.forEach { option ->
-                    val selected = !customMode && option.symbol == current
+                tiles.chunked(columns).forEach { rowTiles ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .clickable(role = Role.RadioButton) { onSelect(option.symbol) },
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = option.symbol,
-                            modifier = Modifier.width(60.dp),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (selected) scheme.primary else scheme.onSurface
-                        )
-                        Text(
-                            text = option.name + " (" + option.code + ")",
-                            modifier = Modifier.weight(1f),
-                            fontSize = 15.sp
-                        )
-                        if (selected) {
-                            Icon(
-                                imageVector = Icons.Filled.Check,
-                                contentDescription = null,
-                                tint = scheme.primary
-                            )
+                        rowTiles.forEach { option ->
+                            if (option == null) {
+                                CurrencyTile(
+                                    symbol = "+",
+                                    description = s.customSymbol,
+                                    selected = customMode,
+                                    onClick = { customMode = true },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            } else {
+                                CurrencyTile(
+                                    symbol = option.symbol,
+                                    description = option.name + " (" + option.code + ")",
+                                    selected = !customMode && option.symbol == current,
+                                    onClick = { onSelect(option.symbol) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                        repeat(columns - rowTiles.size) {
+                            Spacer(Modifier.weight(1f))
                         }
                     }
                 }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .clickable(role = Role.RadioButton) { customMode = true },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "+",
-                        modifier = Modifier.width(60.dp),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = scheme.primary
-                    )
-                    Text(
-                        text = s.customSymbol,
-                        modifier = Modifier.weight(1f),
-                        fontSize = 15.sp
-                    )
-                    if (customMode) {
-                        Icon(
-                            imageVector = Icons.Filled.Check,
-                            contentDescription = null,
-                            tint = scheme.primary
-                        )
-                    }
-                }
                 if (customMode) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(4.dp))
                     OutlinedTextField(
                         value = custom,
                         onValueChange = { custom = it.take(4) },

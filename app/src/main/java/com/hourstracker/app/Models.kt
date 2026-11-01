@@ -1,7 +1,9 @@
 package com.hourstracker.app
 
 import java.time.DayOfWeek
+import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
@@ -10,6 +12,8 @@ private const val MINUTES_PER_DAY = 24 * 60
 
 data class Settings(
     val hourlyRate: Double = 0.0,
+    /** On Saturdays and Sundays the hourly rate is multiplied by this (1 = same rate). */
+    val weekendMultiplier: Double = 1.5,
     val taxRate: Double = 0.0,
     val showTax: Boolean = true,
     val currency: String = "£",
@@ -38,10 +42,13 @@ data class DayEntry(
     val endMin: Int? = null,
     val breakMin: Int = 0,
     val subtractBreak: Boolean = true,
-    val note: String = ""
+    val note: String = "",
+    /** A one-off rate multiplier for this day. null = use the default (weekend factor or 1). */
+    val rateMultiplier: Double? = null
 ) {
     val isEmpty: Boolean
-        get() = startMin == null && endMin == null && breakMin == 0 && subtractBreak && note.isBlank()
+        get() = startMin == null && endMin == null && breakMin == 0 && subtractBreak &&
+            note.isBlank() && rateMultiplier == null
 
     val hasTimes: Boolean
         get() = startMin != null && endMin != null
@@ -60,6 +67,7 @@ data class DayEntry(
 data class WeekSummary(
     val days: List<DayEntry>,
     val dayMinutes: List<Int>,
+    val dayMultipliers: List<Double>,
     val dayCents: List<Long>,
     val totalMinutes: Int,
     val grossCents: Long,
@@ -74,18 +82,33 @@ fun weekStartOf(date: LocalDate): LocalDate =
 fun payCents(minutes: Int, rate: Double): Long =
     Math.round(minutes * rate * 100.0 / 60.0)
 
+fun isWeekend(date: LocalDate): Boolean =
+    date.dayOfWeek == DayOfWeek.SATURDAY || date.dayOfWeek == DayOfWeek.SUNDAY
+
+/**
+ * The factor applied to the hourly rate on a day: the one-off value set for that day,
+ * otherwise the weekend factor on Saturday and Sunday, otherwise 1.
+ */
+fun rateMultiplier(entry: DayEntry, settings: Settings): Double =
+    entry.rateMultiplier ?: if (isWeekend(entry.date)) settings.weekendMultiplier else 1.0
+
+fun dayPayCents(entry: DayEntry, settings: Settings): Long =
+    payCents(entry.workedMinutes, settings.hourlyRate * rateMultiplier(entry, settings))
+
 fun buildWeek(weekStart: LocalDate, entries: Map<LocalDate, DayEntry>, settings: Settings): WeekSummary {
     val days = (0L..6L).map { offset ->
         val date = weekStart.plusDays(offset)
         entries[date] ?: DayEntry(date)
     }
     val minutes = days.map { it.workedMinutes }
-    val cents = minutes.map { payCents(it, settings.hourlyRate) }
+    val multipliers = days.map { rateMultiplier(it, settings) }
+    val cents = days.map { dayPayCents(it, settings) }
     val gross = cents.sum()
     val tax = Math.round(gross * settings.taxRate / 100.0)
     return WeekSummary(
         days = days,
         dayMinutes = minutes,
+        dayMultipliers = multipliers,
         dayCents = cents,
         totalMinutes = minutes.sum(),
         grossCents = gross,
@@ -129,6 +152,41 @@ fun formatNumber(value: Double, s: Strings): String =
 fun parseDecimal(text: String): Double? =
     text.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it >= 0.0 }
 
+/** "×1.5" */
+fun multiplierLabel(value: Double, s: Strings): String = "×" + formatNumber(value, s)
+
+/** "Sun, Nov 1" */
+fun dayMonthLabel(date: LocalDate, s: Strings): String =
+    s.dayShort(date.dayOfWeek) + ", " + date.format(DateTimeFormatter.ofPattern(s.patternNoYear, s.locale))
+
+// ---------- start / end shift button ----------
+
+enum class PunchKind { Start, End, Done }
+
+/**
+ * What the shift button does right now.
+ * Start: nothing recorded today, a tap records the start.
+ * End: a shift is running (started today, or yesterday and still open), a tap records the end.
+ * Done: today already has both times.
+ */
+data class PunchState(val kind: PunchKind, val date: LocalDate, val startMin: Int?)
+
+fun elapsedMinutes(now: LocalDateTime, date: LocalDate, startMin: Int): Int =
+    Duration.between(date.atTime(startMin / 60, startMin % 60), now).toMinutes().toInt().coerceAtLeast(0)
+
+fun punchState(now: LocalDateTime, today: DayEntry, yesterday: DayEntry): PunchState {
+    val todayStart = today.startMin
+    val yesterdayStart = yesterday.startMin
+    val overnightOpen = yesterdayStart != null && yesterday.endMin == null &&
+        Duration.between(yesterday.date.atTime(yesterdayStart / 60, yesterdayStart % 60), now).toMinutes() in 0L until 24L * 60L
+    return when {
+        todayStart != null && today.endMin == null -> PunchState(PunchKind.End, today.date, todayStart)
+        todayStart == null && overnightOpen -> PunchState(PunchKind.End, yesterday.date, yesterdayStart)
+        todayStart == null -> PunchState(PunchKind.Start, today.date, null)
+        else -> PunchState(PunchKind.Done, today.date, todayStart)
+    }
+}
+
 fun weekRangeLabel(weekStart: LocalDate, s: Strings): String {
     val end = weekStart.plusDays(6)
     val noYear = DateTimeFormatter.ofPattern(s.patternNoYear, s.locale)
@@ -155,10 +213,12 @@ fun buildReportText(weekStart: LocalDate, week: WeekSummary, settings: Settings,
         } else {
             val start = formatClock(day.startMin ?: 0, settings.use12h)
             val end = formatClock(day.endMin ?: 0, settings.use12h)
+            val mult = week.dayMultipliers[i]
+            val multTag = if (mult != 1.0) " (" + multiplierLabel(mult, s) + ")" else ""
             sb.appendLine(
                 name + "  " + start + " - " + end + "  " +
                     formatDuration(week.dayMinutes[i], s) + "  " +
-                    formatMoney(week.dayCents[i], settings.currency, s)
+                    formatMoney(week.dayCents[i], settings.currency, s) + multTag
             )
             if (day.breakMin > 0) {
                 val extra = if (day.subtractBreak) "" else " (not subtracted)"
