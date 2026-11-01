@@ -3,6 +3,7 @@ package com.hourstracker.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,10 +31,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private enum class SettingsDialog { Rate, Tax, Currency }
+private enum class SettingsDialog { Rate, Weekend, Tax, Currency }
 
 @Composable
 fun SettingsScreen(vm: TrackerViewModel) {
@@ -41,6 +43,11 @@ fun SettingsScreen(vm: TrackerViewModel) {
     val scheme = MaterialTheme.colorScheme
     val settings = vm.settings
     var dialog by remember { mutableStateOf<SettingsDialog?>(null) }
+
+    // Only the themes that belong to the chosen mode are shown. In "System" mode that is
+    // whichever set the phone is using right now (light or dark).
+    val systemDark = isSystemInDarkTheme()
+    val showDarkThemes = settings.themeMode == 2 || (settings.themeMode == 0 && systemDark)
 
     Column(
         modifier = Modifier
@@ -59,6 +66,13 @@ fun SettingsScreen(vm: TrackerViewModel) {
                         s.set
                     },
                     onClick = { dialog = SettingsDialog.Rate }
+                )
+            }
+            RowDivider()
+            SettingRow(s.weekendRate, subtitle = s.weekendSubtitle) {
+                Pill(
+                    text = multiplierLabel(settings.weekendMultiplier, s),
+                    onClick = { dialog = SettingsDialog.Weekend }
                 )
             }
             RowDivider()
@@ -109,35 +123,35 @@ fun SettingsScreen(vm: TrackerViewModel) {
             }
             RowDivider()
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(s.lightTheme, fontSize = 17.sp)
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val names = listOf(s.themeClassic, s.themeMint)
-                    LightPalettes.forEachIndexed { index, palette ->
-                        ThemeSwatch(
-                            palette = palette,
-                            name = names[index],
-                            selected = settings.lightTheme == index,
-                            onClick = { vm.updateSettings { it.copy(lightTheme = index) } },
-                            modifier = Modifier.weight(1f)
-                        )
+                if (showDarkThemes) {
+                    Text(s.darkTheme, fontSize = 17.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val names = listOf(s.themeMidnight, s.themeBlack)
+                        DarkPalettes.forEachIndexed { index, palette ->
+                            ThemeSwatch(
+                                palette = palette,
+                                name = names[index],
+                                selected = settings.darkTheme == index,
+                                onClick = { vm.updateSettings { it.copy(darkTheme = index) } },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
-                }
-            }
-            RowDivider()
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(s.darkTheme, fontSize = 17.sp)
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val names = listOf(s.themeMidnight, s.themeBlack)
-                    DarkPalettes.forEachIndexed { index, palette ->
-                        ThemeSwatch(
-                            palette = palette,
-                            name = names[index],
-                            selected = settings.darkTheme == index,
-                            onClick = { vm.updateSettings { it.copy(darkTheme = index) } },
-                            modifier = Modifier.weight(1f)
-                        )
+                } else {
+                    Text(s.lightTheme, fontSize = 17.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val names = listOf(s.themeClassic, s.themeMint)
+                        LightPalettes.forEachIndexed { index, palette ->
+                            ThemeSwatch(
+                                palette = palette,
+                                name = names[index],
+                                selected = settings.lightTheme == index,
+                                onClick = { vm.updateSettings { it.copy(lightTheme = index) } },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
             }
@@ -167,6 +181,25 @@ fun SettingsScreen(vm: TrackerViewModel) {
 
     when (dialog) {
         SettingsDialog.Rate -> RateDialog(vm) { dialog = null }
+        SettingsDialog.Weekend -> ValueDialog(
+            title = s.weekendRate,
+            label = s.multiplierLabel,
+            initial = formatNumber(settings.weekendMultiplier, s),
+            keyboardType = KeyboardType.Decimal,
+            maxLength = 5,
+            onSave = { text ->
+                val value = parseDecimal(text)
+                if (value != null && value > 0.0 && value <= 10.0) {
+                    vm.updateSettings { it.copy(weekendMultiplier = value) }
+                }
+                dialog = null
+            },
+            onReset = {
+                vm.updateSettings { it.copy(weekendMultiplier = 1.5) }
+                dialog = null
+            },
+            onDismiss = { dialog = null }
+        )
         SettingsDialog.Tax -> TaxDialog(vm) { dialog = null }
         SettingsDialog.Currency -> CurrencyDialog(
             current = settings.currency,

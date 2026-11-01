@@ -30,11 +30,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.LocalDate
 
-private enum class DayDialog { Start, End, Break }
+private enum class DayDialog { Start, End, Break, Multiplier }
 
 @Composable
 fun DayDetailScreen(vm: TrackerViewModel, date: LocalDate, onBack: () -> Unit) {
@@ -44,7 +45,13 @@ fun DayDetailScreen(vm: TrackerViewModel, date: LocalDate, onBack: () -> Unit) {
     val settings = vm.settings
     val entry = vm.entryFor(date)
     val minutes = entry.workedMinutes
-    val cents = payCents(minutes, settings.hourlyRate)
+    val cents = dayPayCents(entry, settings)
+    val multiplier = rateMultiplier(entry, settings)
+    val multiplierNote = when {
+        entry.rateMultiplier != null -> s.multCustom
+        isWeekend(date) -> s.multWeekend
+        else -> s.multStandard
+    }
     var dialog by remember { mutableStateOf<DayDialog?>(null) }
     val timeMode = if (settings.use12h) TimeMode.Clock12 else TimeMode.Clock24
     val timeHint = if (settings.use12h) s.hint12 else s.hint24
@@ -147,6 +154,13 @@ fun DayDetailScreen(vm: TrackerViewModel, date: LocalDate, onBack: () -> Unit) {
                 )
             }
             RowDivider()
+            SettingRow(s.rateMultiplier, subtitle = multiplierNote) {
+                Pill(
+                    text = multiplierLabel(multiplier, s),
+                    onClick = { dialog = DayDialog.Multiplier }
+                )
+            }
+            RowDivider()
             SettingRow(s.hoursWorked) {
                 Text(
                     text = formatDuration(minutes, s),
@@ -222,6 +236,25 @@ fun DayDetailScreen(vm: TrackerViewModel, date: LocalDate, onBack: () -> Unit) {
             },
             onReset = {
                 vm.update(date) { e -> e.copy(breakMin = 0) }
+                dialog = null
+            },
+            onDismiss = { dialog = null }
+        )
+        DayDialog.Multiplier -> ValueDialog(
+            title = s.rateMultiplier,
+            label = s.dayMultiplierLabel,
+            initial = formatNumber(multiplier, s),
+            keyboardType = KeyboardType.Decimal,
+            maxLength = 5,
+            onSave = { text ->
+                val value = parseDecimal(text)
+                if (value != null && value > 0.0 && value <= 10.0) {
+                    vm.update(date) { e -> e.copy(rateMultiplier = value) }
+                }
+                dialog = null
+            },
+            onReset = {
+                vm.update(date) { e -> e.copy(rateMultiplier = null) }
                 dialog = null
             },
             onDismiss = { dialog = null }

@@ -10,6 +10,7 @@ class Storage(context: Context) {
 
     fun loadSettings(): Settings = Settings(
         hourlyRate = prefs.getString("rate", null)?.toDoubleOrNull() ?: 0.0,
+        weekendMultiplier = prefs.getString("weekend_mult", null)?.toDoubleOrNull() ?: 1.5,
         taxRate = prefs.getString("tax", null)?.toDoubleOrNull() ?: 0.0,
         showTax = prefs.getBoolean("show_tax", true),
         currency = prefs.getString("currency", null) ?: "£",
@@ -23,6 +24,7 @@ class Storage(context: Context) {
     fun saveSettings(settings: Settings) {
         prefs.edit()
             .putString("rate", settings.hourlyRate.toString())
+            .putString("weekend_mult", settings.weekendMultiplier.toString())
             .putString("tax", settings.taxRate.toString())
             .putBoolean("show_tax", settings.showTax)
             .putString("currency", settings.currency)
@@ -48,7 +50,8 @@ class Storage(context: Context) {
                     endMin = if (o.has("e")) o.getInt("e") else null,
                     breakMin = o.optInt("b", 0),
                     subtractBreak = o.optBoolean("sub", true),
-                    note = o.optString("n", "")
+                    note = o.optString("n", ""),
+                    rateMultiplier = if (o.has("m")) o.getDouble("m") else null
                 )
             }
             result
@@ -67,6 +70,7 @@ class Storage(context: Context) {
             o.put("b", entry.breakMin)
             o.put("sub", entry.subtractBreak)
             o.put("n", entry.note)
+            entry.rateMultiplier?.let { o.put("m", it) }
             root.put(date.toString(), o)
         }
         prefs.edit().putString("entries", root.toString()).apply()

@@ -57,6 +57,9 @@ fun FormScreen(vm: TrackerViewModel, onOpenDay: (LocalDate) -> Unit) {
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
     ) {
+        // Start / end the shift with one tap.
+        QuickPunch(vm)
+
         // The table: header and seven days.
         Column(
             modifier = Modifier
@@ -143,7 +146,8 @@ fun FormScreen(vm: TrackerViewModel, onOpenDay: (LocalDate) -> Unit) {
                     s.set
                 },
                 onClick = { dialog = FormDialog.Rate },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                wide = !settings.showTax
             )
             if (settings.showTax) {
                 MiniCard(
@@ -152,8 +156,6 @@ fun FormScreen(vm: TrackerViewModel, onOpenDay: (LocalDate) -> Unit) {
                     onClick = { dialog = FormDialog.Tax },
                     modifier = Modifier.weight(1f)
                 )
-            } else {
-                Spacer(Modifier.weight(1f))
             }
         }
 

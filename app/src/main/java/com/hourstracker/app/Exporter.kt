@@ -26,9 +26,14 @@ object Exporter {
         val brk: String,
         val minutes: Int,
         val hasTimes: Boolean,
+        val mult: Double,
         val cents: Long,
         val note: String
-    )
+    ) {
+        /** The rate multiplier as plain text ("1.5"), empty when the day is paid at the normal rate. */
+        val multText: String
+            get() = if (!hasTimes || mult == 1.0) "" else java.math.BigDecimal.valueOf(mult).stripTrailingZeros().toPlainString()
+    }
 
     private fun rowsOf(week: WeekSummary, settings: Settings, s: Strings): List<ExportRow> =
         week.days.mapIndexed { i, d ->
@@ -40,6 +45,7 @@ object Exporter {
                 brk = if (d.breakMin > 0) formatHm(d.breakMin) else "",
                 minutes = week.dayMinutes[i],
                 hasTimes = d.hasTimes,
+                mult = week.dayMultipliers[i],
                 cents = week.dayCents[i],
                 note = d.note.trim()
             )
@@ -66,27 +72,28 @@ object Exporter {
 
         line(
             s.exportDate, s.colDay, s.colStart, s.colEnd, s.colBreak,
-            s.hoursHm, s.hoursDecimal, s.colPay + " (" + settings.currency + ")", s.note
+            s.hoursHm, s.hoursDecimal, s.rateX, s.colPay + " (" + settings.currency + ")", s.note
         )
         rowsOf(week, settings, s).forEach { r ->
             line(
                 r.date.toString(), r.day, r.start, r.end, r.brk,
                 if (r.hasTimes) formatHm(r.minutes) else "",
                 if (r.hasTimes) decimalHours(r.minutes) else "",
+                r.multText,
                 if (r.hasTimes) money(r.cents) else "",
                 r.note
             )
         }
         line(
             s.total, "", "", "", "",
-            formatHm(week.totalMinutes), decimalHours(week.totalMinutes), money(week.grossCents), ""
+            formatHm(week.totalMinutes), decimalHours(week.totalMinutes), "", money(week.grossCents), ""
         )
         if (settings.taxActive) {
             line(
                 s.tax + " (" + formatNumber(settings.taxRate, s) + "%)", "", "", "", "",
-                "", "", "-" + money(week.taxCents), ""
+                "", "", "", "-" + money(week.taxCents), ""
             )
-            line(s.netPay, "", "", "", "", "", "", money(week.netCents), "")
+            line(s.netPay, "", "", "", "", "", "", "", money(week.netCents), "")
         }
         return sb.toString().toByteArray(Charsets.UTF_8)
     }
@@ -189,7 +196,7 @@ object Exporter {
         // row 3: column headers
         val headers = listOf(
             s.exportDate, s.colDay, s.colStart, s.colEnd, s.colBreak,
-            s.hoursHm, s.hoursDecimal, s.colPay + " (" + settings.currency + ")", s.note
+            s.hoursHm, s.hoursDecimal, s.rateX, s.colPay + " (" + settings.currency + ")", s.note
         )
         sheetRows.append(rowXml(3, headers.mapIndexed { i, h -> textCell(i, 3, h, 1) }))
 
@@ -206,9 +213,10 @@ object Exporter {
             if (r.hasTimes) {
                 cells.add(textCell(5, n, formatHm(r.minutes)))
                 cells.add(numberCell(6, n, preciseHours(r.minutes), 2))
-                cells.add(numberCell(7, n, money(r.cents), 2))
+                if (r.multText.isNotEmpty()) cells.add(numberCell(7, n, r.multText, 0))
+                cells.add(numberCell(8, n, money(r.cents), 2))
             }
-            cells.add(textCell(8, n, r.note))
+            cells.add(textCell(9, n, r.note))
             sheetRows.append(rowXml(n, cells))
         }
         val lastDay = firstDay + rows.size - 1
@@ -222,7 +230,7 @@ object Exporter {
                     textCell(0, totalRow, s.total, 1),
                     textCell(5, totalRow, formatHm(week.totalMinutes), 1),
                     formulaCell(6, totalRow, "SUM(G" + firstDay + ":G" + lastDay + ")", preciseHours(week.totalMinutes), 3),
-                    formulaCell(7, totalRow, "SUM(H" + firstDay + ":H" + lastDay + ")", money(week.grossCents), 3)
+                    formulaCell(8, totalRow, "SUM(I" + firstDay + ":I" + lastDay + ")", money(week.grossCents), 3)
                 )
             )
         )
@@ -234,7 +242,7 @@ object Exporter {
                     taxRow,
                     listOf(
                         textCell(0, taxRow, s.tax + " (" + formatNumber(settings.taxRate, s) + "%)", 1),
-                        numberCell(7, taxRow, "-" + money(week.taxCents), 2)
+                        numberCell(8, taxRow, "-" + money(week.taxCents), 2)
                     )
                 )
             )
@@ -243,13 +251,13 @@ object Exporter {
                     netRow,
                     listOf(
                         textCell(0, netRow, s.netPay, 1),
-                        formulaCell(7, netRow, "H" + totalRow + "+H" + taxRow, money(week.netCents), 3)
+                        formulaCell(8, netRow, "I" + totalRow + "+I" + taxRow, money(week.netCents), 3)
                     )
                 )
             )
         }
 
-        val widths = listOf(12, 8, 11, 11, 9, 13, 16, 14, 40)
+        val widths = listOf(12, 8, 11, 11, 9, 13, 16, 10, 14, 40)
         val cols = StringBuilder("<cols>")
         widths.forEachIndexed { i, w ->
             cols.append("<col min=\"").append(i + 1).append("\" max=\"").append(i + 1)
@@ -363,8 +371,9 @@ object Exporter {
         // column positions
         val colStart = 110f
         val colEnd = 190f
-        val colBreak = 275f
-        val colHours = 430f
+        val colBreak = 270f
+        val colRate = 335f
+        val colHours = 435f
         val colPay = right
 
         textAt(s.appTitle, left, title)
@@ -378,6 +387,7 @@ object Exporter {
         textAt(s.colStart, colStart, head)
         textAt(s.colEnd, colEnd, head)
         textAt(s.colBreak, colBreak, head)
+        textAt(s.rateX, colRate, head)
         textRight(s.colHours, colHours, head)
         textRight(s.colPay, colPay, head)
         y += 8f
@@ -390,6 +400,7 @@ object Exporter {
             textAt(if (r.hasTimes) r.start else "--", colStart, body)
             textAt(if (r.hasTimes) r.end else "--", colEnd, body)
             textAt(if (r.brk.isNotEmpty()) r.brk else "--", colBreak, body)
+            textAt(if (r.multText.isNotEmpty()) "×" + r.multText else "--", colRate, body)
             textRight(if (r.hasTimes) formatDuration(r.minutes, s) else "--", colHours, body)
             textRight(if (r.hasTimes) formatMoney(r.cents, settings.currency, s) else "--", colPay, green)
         }
